@@ -4,13 +4,19 @@
 int main() {
 	MyFS* vfs = new MyFS();
 	string root = "";
-	string password = vfs->password;
-	cout << "make | open | list | import | repass | delete | quit | help" << endl;
+	string password = "";
+	cout << "mount | make | open | list | import | repass | delete | quit | help" << endl;
 	while (true) {
+		root = vfs->sate;
 		std::cout << std::endl << root + ">>> ";
 		std::string cmd;
 		std::cin >> cmd;
-		if (cmd == "list") {
+		if (cmd =="mount") {
+			string path;
+			cin >> path;
+			vfs->mount(path);
+		}
+		else if (cmd == "list") {
 			cout << "All file show here";
 		}
 		else if (cmd == "make") {

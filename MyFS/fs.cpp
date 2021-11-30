@@ -2,21 +2,7 @@
 
 uint32_t MyFS::sig = 0x36160524;
 
-void newHeader(Header& h, uint32_t sig,
-	uint32_t data_size,
-	Date modtime,
-uint16_t central_size,
-uint16_t offset_backup_start,
-uint16_t pass_len,
-char* password) {
-	h.sig = sig;
-	h.data_size = data_size;
-	h.modtime = modtime;
-	h.central_size = central_size;
-	h.offset_backup_start = offset_backup_start;
-	h.pass_len = pass_len;
-	strcpy_s(h.password, password);
-}
+
 Date::Date() {
 	time_t t = time(NULL);
 	tm* now = new tm();
@@ -28,7 +14,33 @@ Date::Date() {
 }
 
 
+MyFS::MyFS() {
+	this->f = NULL;
+	this->sate = "Empty";
+	this->size = 0;
+}
 
+bool MyFS::mount(string path) {
+	fstream f;
+	f.open(path, ios::binary | ios::in | ios::out);
+	Header h;
+	Date now;
+
+	h.sig = this->sig;
+	h.data_size = 0;
+	h.modtime = now;
+	h.central_size = 0;
+	h.pass_len = 0;
+	f.seekg(ios::end);
+	int size = f.tellg();
+	int num_blocks = floor((ceil(size / BLOCK_SIZE)-7)/CLUSTER);
+	int table_size = ceil(num_blocks * 0.005);
+	f.seekp(ios::beg);
+	f.write((char*)&h, sizeof(Header));
+	this->f = &f;
+	this->sate = path;
+	return true;
+}
 
 bool MyFS::import(string path)
 {
@@ -55,15 +67,7 @@ void MyFS::list() {
 
 }
 
-bool MyFS::verify(string pass) {
-	if (pass == this->password) {
-		this->state = true;
-		return true;
-	}
-	else {
-		return false;
-	}
-}
+
 bool MyFS::changePass(string pass) {
 	fstream f;
 	
@@ -82,10 +86,8 @@ bool MyFS::changePass(string pass) {
 
 bool MyFS::open(string filename, string password) {
 	fstream f;
-	uint16_t password_len = 0;
-	string password;
 
-	f.open("MyFS.Dat", ios::binary|ios::in|ios::out);
+	f.open(filename, ios::binary|ios::in|ios::out);
 	if (!f) {
 		return false;
 	}
@@ -95,11 +97,14 @@ bool MyFS::open(string filename, string password) {
 		cout << "Faile sig" << endl;
 		return false;
 	}
-	string paswsord;
-	password = h.password;
-	password = password.substr(0, h.pass_len);
-	this->password = password;
-	this->state = false;
+	if (password != h.password) {
+		cout << "Wrong password" << endl;
+		f.close();
+		return false;
+	}
+	f.seekg(ios::end);
+	this->size = f.tellg();
+	this->sate = filename;
 	this->f = &f;
 	return true;
 }
@@ -108,10 +113,8 @@ bool MyFS::make(string password, uint32_t size) {
 	Date now;
 
 	size = size * 1024 * 1024;
-	this->size = size;
 	uint16_t num_block = size / 512;
-
-	newHeader(h,this->sig,0,now,0,num_block-4,password.length(),&password[0]);
+	
 	uint16_t pass_len = (uint16_t)password.length();
 	ofstream f;
 	f.open(MYFS, ios::binary);

@@ -52,17 +52,16 @@ public:
 	static uint32_t sig;
 	Header h;
 	uint32_t size;
-	string password;
-	bool state;
+	string sate;
 	fstream* f;
 
 public:
-
+	MyFS();
+	bool mount(string path);
 	bool open(string filename, string password);
 	bool make(string password, uint32_t size);
 	bool import(string path);
 	void list();
-	bool verify(string pass);
 	bool changePass(string pass);
 	void print();
 	void readBlock(char* buffer, uint16_t offset, int numblks);
