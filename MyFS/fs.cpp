@@ -1,151 +1,71 @@
 #include "fs.h"
 
-uint32_t MyFS::sig = 0x36160524;
 
 
-Date::Date() {
-	time_t t = time(NULL);
-	tm* now = new tm();
-	localtime_s(now, &t);
-	this->mtime = (uint8_t)(now->tm_hour * 60 + now->tm_min);
-	this->day = (uint8_t)now->tm_mday;
-	this->month = (uint8_t)now->tm_mon;
-	this->year = (uint8_t)(now->tm_year+1900-2000);
-}
-
-
-MyFS::MyFS() {
-	this->f = NULL;
-	this->sate = "Empty";
-	this->size = 0;
-}
-
-bool MyFS::mount(string path) {
-	fstream f;
-	f.open(path, ios::binary | ios::in | ios::out);
-	Header h;
-	Date now;
-
-	h.sig = this->sig;
-	h.data_size = 0;
-	h.modtime = now;
-	h.central_size = 0;
-	h.pass_len = 0;
-	f.seekg(ios::end);
-	int size = f.tellg();
-	int num_blocks = floor((ceil(size / BLOCK_SIZE)-7)/CLUSTER);
-	int table_size = ceil(num_blocks * 0.005);
-	f.seekp(ios::beg);
-	f.write((char*)&h, sizeof(Header));
-	this->f = &f;
-	this->sate = path;
-	return true;
-}
-
-bool MyFS::import(string path)
+bool Myfs::mount(const std::string& filename)
 {
-	ifstream fi;
-	fi.open(path, ios::binary | ios::ate);
-	if (!fi) {
-		cout << "File doesn't exist" << endl;
-		return false;
-	}
-	uint32_t fi_size = (uint32_t)fi.tellg();
+    umount();
+    fio.open(filename, fstream::in | fstream::binary | fstream::out);
+    if (fio.fail()) {
+        return false;
+    }
 
-	uint16_t flag;
-	string password = "";
-	cout << "Do you want password (0 for no, 1 for yes)"; cin >> flag;
-	if (flag == 1)
-	{
-		cout << "Create password for this file:"; cin >> password;
-	}
+    // measure device capacity  
+    fio.seekg(0, fio.end);
+    device_capacity = fio.tellg();
+    cout << device_capacity << endl;
+    // measure how many blocks are used for bitmaskz
+    n_bitmask_blocks = ceil((device_capacity-1)/(BLOCK_SIZE * BLOCK_SIZE * 8)+1);
+    n_data_blocks = ceil((device_capacity-1)/ BLOCK_SIZE +1);
+    root_inode_id = n_bitmask_blocks; // use the first block after bitmask
+    cout << root_inode_id << endl;
+    // if first time (device not formatted)
+    if (!block_used(root_inode_id)) {
+        // FORMAT IT! (via creating root directory)
+        block_mark_used(root_inode_id);
 
+        INode root_inode;
+        root_inode.n_links = 1;
+        root_inode.size = 0;
+        root_inode.type = FileType::Directory;
+        write_block(root_inode_id, &root_inode);
+    }
 
-	
-}
-void MyFS::list() {
-
-}
-
-
-bool MyFS::changePass(string pass) {
-	fstream f;
-	
-	f.open("MyFS.Dat", ios::binary | ios::in | ios::out);
-	if (!f) {
-		return false;
-	}
-	f.seekg(sizeof(Header) - 16);
-	uint16_t pass_len = pass.length();
-	cout << pass_len << endl;
-	f.write((char*)&pass_len, sizeof(uint16_t));
-	f.write(&pass[0], pass_len);
-	f.close();
-	return true;
+    return true;    
 }
 
-bool MyFS::open(string filename, string password) {
-	fstream f;
-
-	f.open(filename, ios::binary|ios::in|ios::out);
-	if (!f) {
-		return false;
-	}
-	f.seekg(0);
-	f.read((char*)&this->h, sizeof(Header));
-	if (this->h.sig != this->sig) {
-		cout << "Faile sig" << endl;
-		return false;
-	}
-	if (password != h.password) {
-		cout << "Wrong password" << endl;
-		f.close();
-		return false;
-	}
-	f.seekg(ios::end);
-	this->size = f.tellg();
-	this->sate = filename;
-	this->f = &f;
-	return true;
-}
-bool MyFS::make(string password, uint32_t size) {
-	Header h;
-	Date now;
-
-	size = size * 1024 * 1024;
-	uint16_t num_block = size / 512;
-	
-	uint16_t pass_len = (uint16_t)password.length();
-	ofstream f;
-	f.open(MYFS, ios::binary);
-
-	f.write((char*)&h, sizeof(Header));
-	f.seekp(size-1);
-	f.write(new char, 1);
-	f.close();
-	return true;
+void Myfs::umount()
+{
+    device_capacity = -1;
+    n_bitmask_blocks = -1;
+    n_data_blocks = -1;
+    fio.close();
 }
 
-void MyFS::readBlock(char* buffer, uint16_t offset, int numblks) {
-	f->seekg(0);
-	f->seekg(offset * (uint32_t)BLOCK_SIZE);
-	f->read(buffer, (uint32_t)numblks * (uint32_t)BLOCK_SIZE);
-	return;
-}
-bool MyFS::writeBlock(char* buffer, uint16_t offset, uint32_t size) {
-	try {
-		f->seekg(offset * BLOCK_SIZE);
-		f->write(buffer, size);
-		return true;
-	}
-	catch(...){
-		return false;
-	}
-	
-}
-void MyFS::print() {
-
+bool Myfs::block_used(int block_id)
+{   
+    fio.seekg((block_id - n_bitmask_blocks) / 8, fio.beg);
+    return (fio.get() & (1 << ((block_id - n_bitmask_blocks) % 8))) != 0;
 }
 
+bool Myfs::block_mark_used(int block_id)
+{
+    fio.seekg((block_id - n_bitmask_blocks) / 8, fio.beg);
+    char old_mask = fio.get();
+    fio.seekp((block_id - n_bitmask_blocks) / 8, fio.beg);
+    fio.put(static_cast<char>(old_mask | (1 << ((block_id - n_bitmask_blocks) % 8))));
+    fio.flush();
+    return true;
+}
 
+void Myfs::write_block(int block_id, const char* data, int size = BLOCK_SIZE, int shift = 0)
+{
+    fio.seekp(block_id * BLOCK_SIZE + shift, fio.beg);
+    fio.write(data, size);
+    fio.flush();
+}
 
+void Myfs::write_block(int block_id, const INode* inode)
+{
+    write_block(block_id, reinterpret_cast<const char*>(inode));
+}
