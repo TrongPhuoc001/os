@@ -21,7 +21,7 @@ using namespace std;
 enum class FileType { Regular, Directory, Symlink };
 
 struct Link {
-    int inode_block_id; // relative to the last bitmask block
+    int inode_block_id; 
     char filename[FILENAME_MAX_LENGTH + 1];
 };
 
@@ -30,27 +30,26 @@ struct INode final {
     int n_links;
     int size;
     int data_block_ids[BLOCKS_PER_INODE];
-    // todo add link to additional data_blocks
 };
 
 
 class MyFS {
 public:
-    string PATH_SEPARATOR = "/";
-    const std::string ROOTDIR_NAME = "/";
+    //string PATH_SEPARATOR = "/";
+    //const std::string ROOTDIR_NAME = "/";
     int ZERO_BLOCK = -1;
     int BAD_BLOCK = -2;
 
-    int root_inode_id = -1;
-    int device_capacity = -1l;
-    int n_bitmask_blocks = -1;
-    int n_data_blocks = -1;
-    string cwd = ROOTDIR_NAME;
-    int pw_set = false;
+    int rootInodeId = -1;
+    int volumeSize = -1l;
+    int bitmapBlocks = -1;
+    int dataBlocks = -1;
+    string cwd = "/";
+    int isPwSetted = false;
     bool formatFirstTime = false;
     bool isLoggedIn = false;
     bool formated = false;
-    fstream fio;
+    fstream volume;
 
 
     //FUNCTION==================================================
@@ -60,15 +59,15 @@ public:
     bool mount(const std::string& filename);
     void umount();
     bool importFile(string path);
-    string ls(const string& dirname);
+    string list(const string& dirname);
     int create(const std::string& path, FileType type = FileType::Regular);
-    bool file_exists(const std::string& filename);
-    bool unlink(const std::string& path);
+    bool fileExists(const std::string& filename);
+    bool remove(const std::string& path);
     bool exportFile(string filename, string path);
-    bool change_pw(string pw);
+    bool changePW(string pw);
     int authentication();
-    bool check_pw(string pw);
-    string hash_code(string pw);
+    bool checkPW(string pw);
+    string hashCode(string pw);
     /*bool mkdir(const std::string& dirname);
     bool link(const std::string& target, const std::string& name_path);
     bool cd(const std::string& dirname);
@@ -84,15 +83,15 @@ public:
     //void block_mark_unused(int block_id);
     //int div_ceil(int a, int b);//
 
-    void write_block(int block_id, const char* data, int size = BLOCK_SIZE, int shift = 0);
-    void write_block(int block_id, const INode* inode);
-    void read_block(int block_id, char* data, int size = BLOCK_SIZE, int shift = 0);//
-    void read_block(int block_id, INode* inode);
-    int find_empty_block();
-    int inode_follow_symlinks(int inode_block_id, int max_follows = MAX_SYMLINK_FOLLOWS);
-    int find_inode_block_id(const string& path);
-    int dir_find_file_inode(int block_id, const string& filename);
-    void dereference_inode(int inode_id);
+    void writeToBlock(int block_id, const char* data, int size = BLOCK_SIZE, int shift = 0);
+    void writeToBlock(int block_id, const INode* inode);
+    void readFromBlock(int block_id, char* data, int size = BLOCK_SIZE, int shift = 0);//
+    void readFromBlock(int block_id, INode* inode);
+    int getUnusedBlock();
+    int getInodeByLinks(int inode_block_id, int max_follows = MAX_SYMLINK_FOLLOWS);
+    int findInodeBlock(const string& path);
+    int findFileInode(int block_id, const string& filename);
+    void removeInode(int inode_id);
 
     //string join_path(string part1, string part2);   //
     //string get_file_directory(const string& path);  //
@@ -100,10 +99,10 @@ public:
 
 
     //FILE
-    void read(char* data, int size, int shift, int block_id);
-    int size(int block_id);
-    bool truncate(int size, int block_id);
-    bool write(const char* data, int size, int shift, int block_id);
-    string cat(int block_id);
+    void readFile(char* data, int size, int shift, int block_id);
+    int sizeFile(int block_id);
+    bool resizeFile(int size, int block_id);
+    bool writeFile(const char* data, int size, int shift, int block_id);
+    string catFile(int block_id);
 
 };

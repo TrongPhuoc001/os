@@ -5,15 +5,90 @@ using namespace std;
 
 void run() {
     MyFS* myfs = new MyFS();
+    bool insideVolume = false;
     while (true) {
+        if (!insideVolume) {
+            cout << "Nhap \"format\" de tao volume MyFS.dat\n";
+            cout << "Nhap \"access\" + \"ten volume\" de truy cap toi volume\n";
+        }
+        cout << "\n>>> ";
+        string cmd;
+        cin >> cmd;
+        if (!myfs->formated) {
+            while (cmd != "access" && cmd != "format") {
+                cout << "Nhap \"format\" de tao volume MyFS.dat\n";
+                cout << "Nhap \"access\" + \"ten volume\" de truy cap toi volume\n";
+                cout << "\n>>> ";
+                cin >> cmd;
+            }
+        }
+
         if (myfs->formated) {
             int auth = myfs->authentication();
             if (auth == BADPW) {
-                while (!myfs->pw_set) {
+                while (!myfs->isPwSetted) {
                     string pw;
-                    cout << "Create your password: ";
+                    cout << "Volume chua co mat khau, vui long tao mat khau\n";
+                    cout << "Nhap mat khau cua ban: ";
                     cin >> pw;
-                    cout << "Confirm your password: ";
+                    cout << "Xac nhan mat khau: ";
+                    string cpw;
+                    cin >> cpw;
+                    if (pw == cpw) {
+                        myfs->changePW(pw);
+                    }
+                    else {
+                        cout << "Tao mat khau that bai\n";
+                    }
+                }
+            }
+            if (auth == UNLOGGEDIN) {
+                bool check = false;
+                while (!check) {
+                    cout << "Ban chua dang nhap, vui long dang nhap de truy xuat volume\n";
+                    string pw;
+                    cout << "Nhap mat khau: ";
+                    cin >> pw;
+                    check = myfs->checkPW(pw);
+                    if (!check) cout << "Sai mat khau\n";
+                }
+                cout << "Dang nhap thanh cong\n";
+                cout << "Neu lan dau su dung, nhap \"help\" de biet cac lenh truy xuat volume\n";
+            }
+        }
+        if (cin.eof()) {
+            break;
+        }
+        if (cmd == "format") {
+            int size;
+            cout << "Nhap kich thuoc volume:";
+            cin >> size;
+            if (myfs->formatMyFS(size)) {
+                cout << "Volume format thanh cong!" << endl;
+                insideVolume = true;
+            }
+            else {
+                cout << "Khong the format volume!" << endl;
+                cout << "Dam bao rang kich thuoc volume lon hon 22600MB" << endl;
+            }
+        }
+        if (cmd == "access") {
+            string fsFileName;
+            cin >> fsFileName;
+            if (myfs->mount(fsFileName)) {
+                cout << "Truy cap volume thanh cong!" << endl;
+                insideVolume = true;
+            }
+            else {
+                cout << "Khong the truy cap volume\n" << endl;
+            }
+        }
+        else if (cmd == "chpw") {
+            string pw;
+            cout << "Nhap mat khau cu:";
+            cin >> pw;
+            /* if (!myfs->pw_set) {
+                    cout << "confirm your password: ";
                     string cpw;
                     cin >> cpw;
                     if (pw == cpw) {
@@ -23,103 +98,46 @@ void run() {
                         cout << "Create password fail\n";
                     }
                 }
-            }
-            if (auth == UNLOGGEDIN) {
-                bool check = false;
-                while (!check) {
-                    string pw;
-                    cout << "Enter your password: ";
-                    cin >> pw;
-                    check = myfs->check_pw(pw);
-                    if (!check) cout << "Wrong password\n";
-                }
-                cout << "Loggin succesfully";
-
-            }
-        }
-        cout << endl;
-        cout << ">>> ";
-        string cmd;
-        cin >> cmd;
-        if (cin.eof()) {
-            break;
-        }
-        if (cmd == "format") {
-            int size;
-            cout << "Enter volume size:";
-            cin >> size;
-            if (myfs->formatMyFS(size)) {
-                cout << "File system formated!" << endl;
-            }
-            else {
-                cout << "Cannot format file system!" << endl;
-                cout << "Make sure your volume size is bigger than 226000" << endl;
-            }
-        }
-        if (cmd == "access") {
-            string fsFileName;
-            cin >> fsFileName;
-            if (myfs->mount(fsFileName)) {
-                cout << "Volume access!" << endl;
-            }
-            else {
-                cout << "Can not access volume!" << endl;
-            }
-        }
-        else if (cmd == "chpw") {
-            string pw;
-            cout << "enter your password: ";
-            cin >> pw;
-            if (!myfs->pw_set) {
-                cout << "confirm your password: ";
-                string cpw;
-                cin >> cpw;
-                if (pw == cpw) {
-                    myfs->change_pw(pw);
-                }
                 else {
-                    cout << "Create password fail\n";
-                }
+                }*/
+            if (!myfs->checkPW(pw)) {
+                cout << "Sai mat khau\n";
             }
             else {
-                if (!myfs->check_pw(pw)) {
-                    cout << "wrong password\n";
+                cout << "Nhap mat khau moi:";
+                cin >> pw;
+                if (myfs->changePW(pw)) {
+                    cout << "Doi mat khau thanh cong\n";
                 }
-                else {
-                    cout << "enter new password: ";
-                    cin >> pw;
-                    if (myfs->change_pw(pw)) {
-                        cout << "change password successfully\n";
-                    }
-                    else cout << "change password fail\n";
-                }
+                else cout << "Doi mat khau that bai\n";
             }
         }
-        else if (cmd == "umount") {
-            myfs->umount();
-            cout << "File system unmounted!" << endl;
-        }
+        //else if (cmd == "umount") {
+        //    myfs->umount();
+        //    cout << "File system unmounted!" << endl;
+        //}
         else if (cmd == "ls") {
-            cout << myfs->ls(myfs->cwd);
+            cout << myfs->list(myfs->cwd);
         }
         else if (cmd == "rm") {
             string filename;
             cin >> filename;
-            if (!myfs->file_exists(filename)) {
-                cout << "File doesn't exist" << endl;
+            if (!myfs->fileExists(filename)) {
+                cout << "File khong ton tai" << endl;
             }
             else {
-                cout << (myfs->unlink(filename) ? "Hard link was removed" : "Hard link wasn't removed") << endl;
+                cout << (myfs->remove(filename) ? "Xoa file thanh cong" : "Xoa file that bai") << endl;
             }
         }
         else if (cmd == "import") {
             string filename;
             cin >> filename;
             if (myfs->importFile(filename)) {
-                cout << "Import file successfully\n";
+                cout << "Import file thanh cong\n";
             }
             else {
-                cout << "Cannot write data (probably not enough space)" << endl;
+                cout << "Khong the chep du lieu\n";
+                cout<<"(dam bao volume con trong cho kich thuoc du lieu hoac duong dan dung)" << endl;
             }
         }
         else if (cmd == "export") {
@@ -127,13 +145,22 @@ void run() {
             string path;
             cin >> filename;
             cin >> path;
-            if (myfs->exportFile(filename, path)) { 
-                cout << "Export file successfully\n"; 
+            if (myfs->exportFile(filename, path)) {
+                cout << "Export file thanh cong\n";
             }
-            else cout << "Export file failed\n";
+            else cout << "Export file that bai\n";
+        }
+        else if (cmd == "help") {
+            cout << "1. Nhap \"format\" de tao volume MyFS.dat (luu y: neu MyFS.dat da duoc tao, neu tao lai voi kich thuoc khac se bi loi\n\n";
+            cout << "2. Nhap \"access\" + \"ten volume\" de truy cap toi volume (luu y: neu truy cap toi volume chua duoc format se bi loi)\n\n";
+            cout << "3. Nhap \"chpw\" de doi mat khau\n\n";
+            cout << "4. Nhap \"ls\" de liet ke cac tap tin trong volume\n\n";
+            cout << "5. Nhap \"rm\" + \"ten file\" xoa tap tin khoi volume\n\n";
+            cout << "6. Nhap \"import\" + \"duong dan\" de import tap tin ben ngoai volume\n\n";
+            cout << "7. Nhap \"export\" + \"ten file\" + \"duong dan\" de export file ra ben ngoai volume\n\n";
         }
         else {
-            cout << "Uknown command!" << endl;
+            cout << "~~~~~~~~~~~~~~~~~~" << endl;
         }
     }
     myfs->umount();
