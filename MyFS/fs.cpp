@@ -4,8 +4,8 @@
 
 //FUNCTION==========================================================
 int MyFS::authentication() {
-    int temp_block_id = findInodeBlock("pw"); // Tìm block chứa tên file (trong cây thư mục chính)
-    int block_id = getInodeByLinks(temp_block_id);// Tìm block chứa dữ liệu của file
+    int tempBlockId = findInodeBlock("pw"); // Tìm block chứa tên file (trong cây thư mục chính)
+    int block_id = getInodeByLinks(tempBlockId);// Tìm block chứa dữ liệu của file
     string content = catFile(block_id);
     content.size();
     if (content.size() != 0 && !isLoggedIn)return UNLOGGEDIN;
@@ -17,15 +17,15 @@ bool MyFS::accessVolume(string name) {
     mount(name);
     return true;
 }
-bool MyFS::formatMyFS(int size) {
-    if(!createMyFS(size))return false;
-    if(!mount("D:\\MyFS.dat"))return false;
+bool MyFS::formatMyFS(int size, string disk) {
+    if(!createMyFS(size, disk))return false;
+    if(!mount(disk+":\\MyFS.dat"))return false;
     return true;
 }
-bool MyFS::createMyFS(int size) {
+bool MyFS::createMyFS(int size, string disk) {
     fstream myfs;
 
-    myfs.open("D:\\MyFS.dat", ios_base::out, ios_base::binary);
+    myfs.open(disk+":\\MyFS.dat", ios_base::out, ios_base::binary);
     if (myfs.fail()) return false;
 
     char buffer[1000] = { '0' };
@@ -53,13 +53,13 @@ bool MyFS::mount(const std::string& filename)
     volumeSize = volume.tellg();
 
     // Tính số block mà bitmap chiếm
-    int bitmask_block_size = BLOCK_SIZE * BLOCK_SIZE * 8;
+    int bitmapBlockSize = BLOCK_SIZE * BLOCK_SIZE * 8;
     if (volumeSize == 0) {
         bitmapBlocks = 0;
         dataBlocks = 0;
     }
     else {
-        bitmapBlocks = (volumeSize - 1) / bitmask_block_size + 1;
+        bitmapBlocks = (volumeSize - 1) / bitmapBlockSize + 1;
         dataBlocks = (volumeSize - 1) / BLOCK_SIZE + 1;
     }
 
@@ -85,13 +85,13 @@ bool MyFS::mount(const std::string& filename)
         volume.flush();
 
         // Tạo một inode để cấu hình các thông tin cho block của cây thư mục chính
-        INode root_inode;
-        root_inode.n_links = 1;
-        root_inode.size = 0;
-        root_inode.type = FileType::Directory;
+        INode rootInode;
+        rootInode.n_links = 1;
+        rootInode.size = 0;
+        rootInode.type = FileType::Directory;
 
         // Viết dữ liêu của inode vào block của cây thư mục chính
-        writeToBlock(rootInodeId, &root_inode);
+        writeToBlock(rootInodeId, &rootInode);
 
         // Tạo một block để lưu mật khẩu
         create("pw");
@@ -110,24 +110,19 @@ void MyFS::umount()
 }
 
 int MyFS::create(const string& path, FileType type) {
-    /*if (findInodeBlock(path) != BAD_BLOCK) {
-        return BAD_BLOCK;
-    }*/
-
     // Tìm block đang trống
-    int inode_block_id = getUnusedBlock();
-    if (inode_block_id == BAD_BLOCK) {
+    int inodeBlockId = getUnusedBlock();
+    if (inodeBlockId == BAD_BLOCK) {
         return BAD_BLOCK;
     }
 
-    //block_mark_used(inode_block_id);
     // Đi tới bit trong bảng bitmap đang giữ trạng thái của block trống vừa tìm được
-    volume.seekg((inode_block_id - bitmapBlocks) / 8, volume.beg);
-    char old_mask = volume.get();
+    volume.seekg((inodeBlockId - bitmapBlocks) / 8, volume.beg);
+    char oldMap = volume.get();
 
     // Bật bit này lên là 1 (đánh dấu block này đang bị chiếm)
-    volume.seekp((inode_block_id - bitmapBlocks) / 8, volume.beg);
-    volume.put(static_cast<char>(old_mask | (1 << ((inode_block_id - bitmapBlocks) % 8))));
+    volume.seekp((inodeBlockId - bitmapBlocks) / 8, volume.beg);
+    volume.put(static_cast<char>(oldMap | (1 << ((inodeBlockId - bitmapBlocks) % 8))));
     volume.flush();
 
     // Kiểm tra độ dài của tên file (nếu dài quá giới hạn sẽ trả về BAD_BLOCK)
@@ -136,7 +131,6 @@ int MyFS::create(const string& path, FileType type) {
     }
 
     // Tăng dung lượng của cây thư mục để lưu giữ tên file
-    //int block_id = getInodeByLinks(1);// Tìm địa chỉ block của cây thư mục
     int block_id = 1;
     int old_dir_size = sizeFile(block_id);//Lấy dung lượng cũ của cây thư mục
     resizeFile(old_dir_size + sizeof(Link), block_id);// Tăng dung lượng của cây thư mục
@@ -144,7 +138,7 @@ int MyFS::create(const string& path, FileType type) {
 
     // Create link in root directory
     Link lnk;
-    lnk.inode_block_id = inode_block_id;
+    lnk.inodeBlockId = inodeBlockId;
     strcpy(lnk.filename, path.c_str());
     writeFile(reinterpret_cast<char*>(&lnk), sizeof(Link), old_dir_size, 1);
 
@@ -155,8 +149,8 @@ int MyFS::create(const string& path, FileType type) {
     inode.type = type;
 
     //Viết dữ liệu của inode vừa được tạo vào block trống tìm được
-    writeToBlock(inode_block_id, &inode);
-    return inode_block_id;
+    writeToBlock(inodeBlockId, &inode);
+    return inodeBlockId;
 }
 
 bool MyFS::fileExists(const string& filename) {
@@ -212,12 +206,12 @@ bool MyFS::importFile(string path) {
     }
 
     // Tìm block chứa thông tin của file vừa được tạo
-    int temp_block_id = findInodeBlock(filename);
-    int block_id = getInodeByLinks(temp_block_id);
+    int tempBlockId = findInodeBlock(filename);
+    int blockId = getInodeByLinks(tempBlockId);
 
     // Viết dữ liệu của file cần được import vào file vừa được tạo
-    resizeFile(data.size(), block_id);
-    if (writeFile(data.data(), data.size(), 0, block_id)) {
+    resizeFile(data.size(), blockId);
+    if (writeFile(data.data(), data.size(), 0, blockId)) {
         return true;
     }
 
@@ -231,8 +225,8 @@ bool MyFS::importFile(string path) {
 bool MyFS::remove(const string& path) {
 
     // Tìm block chứa thông tin của file cần xóa 
-    int target_inode = findInodeBlock(path);
-    if (target_inode == BAD_BLOCK) {
+    int inode = findInodeBlock(path);
+    if (inode == BAD_BLOCK) {
         return false;
     }
 
@@ -244,27 +238,27 @@ bool MyFS::remove(const string& path) {
         return false;
     }
 
-    int block_id = getInodeByLinks(1);
+    int blockId = getInodeByLinks(1);
     /*int old_dir_size = size(block_id);
     resizeFile(old_dir_size + sizeof(Link), block_id);*/
 
     // Lấy dữ liệu đang có ở trong cây thư mục chính (để thực hiện xóa thông tin của file cần xóa)
-    auto s_data = catFile(block_id);
-    vector<char> data(s_data.begin(), s_data.end());
-    int old_dir_size = data.size();
+    auto systemData = catFile(blockId);
+    vector<char> data(systemData.begin(), systemData.end());
+    int dirSize = data.size();
 
     // Duyệt qua từng inode trong block của cây thư mục để tìm tên file 
-    for (int n_file = 0; n_file < old_dir_size / sizeof(Link); ++n_file) {
+    for (int n_file = 0; n_file < dirSize / sizeof(Link); ++n_file) {
         auto& lnk = *reinterpret_cast<Link*>(data.data() + n_file * sizeof(Link));
 
         // khi tìm thấy inode chứa tên file, thực hiện xóa inode đó đi và cập nhật lại kích thước của cây thư mục chính
         if (lnk.filename == path) {
-            removeInode(lnk.inode_block_id); // xóa inode chứa thông tin của file cần xóa
+            removeInode(lnk.inodeBlockId); // xóa inode chứa thông tin của file cần xóa
 
             // Cập nhật lại kích thước của cây thư mục chính
-            readFile(reinterpret_cast<char*>(&lnk), sizeof(Link), old_dir_size - sizeof(Link), block_id); 
-            writeFile(reinterpret_cast<char*>(&lnk), sizeof(Link), n_file * sizeof(Link), block_id);
-            resizeFile(old_dir_size - sizeof(Link), block_id);
+            readFile(reinterpret_cast<char*>(&lnk), sizeof(Link), dirSize - sizeof(Link), blockId);
+            writeFile(reinterpret_cast<char*>(&lnk), sizeof(Link), n_file * sizeof(Link), blockId);
+            resizeFile(dirSize - sizeof(Link), blockId);
             return true;
         }
     }
@@ -273,19 +267,19 @@ bool MyFS::remove(const string& path) {
 
 string MyFS::list(const string& dirname) {
     // Tìm block chứa thông tin của cây thư mục chính
-    int block_id = getInodeByLinks(1);
+    int blockId = getInodeByLinks(1);
 
     // Lấy kích thước của cây thư mục chính
-    int dir_size = sizeFile(block_id);
-    vector<char> data(static_cast<size_t>(dir_size));
+    int dirSize  = sizeFile(blockId);
+    vector<char> data(static_cast<size_t>(dirSize));
     
     // Đọc dữ liệu của cây thư mục chính (là thông tin của tất cả file bên trong)
-    readFile(data.data(), dir_size, 0, block_id);
+    readFile(data.data(), dirSize, 0, blockId);
     string result;
     string parts = "";
 
     // Duyệt qua từng thông tin file và lưu vào một chuỗi để in ra màn hình
-    for (int n_file = 0; n_file < dir_size / sizeof(Link); ++n_file) {
+    for (int n_file = 0; n_file < dirSize / sizeof(Link); ++n_file) {
         auto& lnk = *reinterpret_cast<Link*>(data.data() + n_file * sizeof(Link));
         parts = lnk.filename;
         if (parts == "pw")continue;
@@ -307,9 +301,9 @@ bool MyFS::exportFile(string filename, string path) {
     }
     // Tìm file cần export ra bên ngoài
     if (fileExists(filename)) {
-        int temp_block_id = findInodeBlock(filename); // Tìm block chứa tên file (trong cây thư mục chính)
-        int block_id = getInodeByLinks(temp_block_id);// Tìm block chứa dữ liệu của file
-        string content = catFile(block_id); // Lấy dữ liệu của file ra một chuỗi
+        int tempBlockId = findInodeBlock(filename); // Tìm block chứa tên file (trong cây thư mục chính)
+        int blockId = getInodeByLinks(tempBlockId);// Tìm block chứa dữ liệu của file
+        string content = catFile(blockId); // Lấy dữ liệu của file ra một chuỗi
         char* buffer = new char[content.size()];
         for (int i = 0; i < content.size(); i++) {
             buffer[i] = content[i];
@@ -322,13 +316,13 @@ bool MyFS::exportFile(string filename, string path) {
 
 bool MyFS::checkPW(string pw) {
     // Tìm block chứa password
-    int temp_block_id = findInodeBlock("pw");
-    int block_id = getInodeByLinks(temp_block_id);
+    int tempBlockId = findInodeBlock("pw");
+    int blockId = getInodeByLinks(tempBlockId);
 
     // Hash password được truyền vô để so sánh với password được lưu bên trong
-    string hash_pw = hashCode(pw);
-    string old_pw = catFile(block_id);
-    if (old_pw == hash_pw) {
+    string hashPw = hashCode(pw);
+    string oldPw = catFile(blockId);
+    if (oldPw == hashPw) {
         isLoggedIn = true;
         return true;
     }
@@ -337,17 +331,17 @@ bool MyFS::checkPW(string pw) {
 
 bool MyFS::changePW(string new_pw) {
     // Hash password tăng tính bảo mật
-    string hash_pw = hashCode(new_pw);
+    string hashPw = hashCode(new_pw);
     
     // Tìm block được quy định để lưu password
-    int temp_block_id = findInodeBlock("pw");
-    int block_id = getInodeByLinks(temp_block_id);
+    int tempBlockId = findInodeBlock("pw");
+    int blockId = getInodeByLinks(tempBlockId);
 
     // Tăng kích thước của block
-    resizeFile(hash_pw.size(), block_id);
+    resizeFile(hashPw.size(), blockId);
 
     // Viết password vào block được quy định
-    isPwSetted = writeFile(hash_pw.data(), hash_pw.size(), 0, block_id) ? true : false;
+    isPwSetted = writeFile(hashPw.data(), hashPw.size(), 0, blockId) ? true : false;
     return isPwSetted;
 }
 
@@ -356,23 +350,6 @@ string MyFS::hashCode(string pw) {
     return to_string(mystdhash(pw));
 }
 
-//UTILITY==========================================================
-
-//bool MyFS::block_used(int block_id)
-//{   
-//    volume.seekg((block_id - bitmapBlocks) / 8, volume.beg);
-//    return (volume.get() & (1 << ((block_id - bitmapBlocks) % 8))) != 0;
-//}
-
-//bool MyFS::block_mark_used(int block_id)
-//{
-//    volume.seekg((block_id - bitmapBlocks) / 8, volume.beg);
-//    char old_mask = volume.get();
-//    volume.seekp((block_id - bitmapBlocks) / 8, volume.beg);
-//    volume.put(static_cast<char>(old_mask | (1 << ((block_id - bitmapBlocks) % 8))));
-//    volume.flush();
-//    return true;
-//}
 
 void MyFS::writeToBlock(int block_id, const char* data, int size, int shift)
 {
@@ -386,13 +363,6 @@ void MyFS::writeToBlock(int block_id, const INode* inode)
     writeToBlock(block_id, reinterpret_cast<const char*>(inode));
 }
 
-//void MyFS::block_mark_unused(int block_id) {
-//    volume.seekg((block_id - bitmapBlocks) / 8, volume.beg);
-//    auto  old_mask = volume.get();
-//    volume.seekp((block_id - bitmapBlocks) / 8, volume.beg);
-//    volume.put(static_cast<char>(old_mask & ~(1 << ((block_id - bitmapBlocks) % 8))));
-//    volume.flush();
-//}
 
 void MyFS::readFromBlock(int block_id, char* data, int size, int shift) {
     volume.seekg(block_id * BLOCK_SIZE + shift, volume.beg);
@@ -406,11 +376,10 @@ void MyFS::readFromBlock(int block_id, INode* inode) {
 
 int MyFS::getUnusedBlock() {
     // Duyệt qua từng bit trong bảng bitmap để tìm bit nào chưa được bật lên 1 (bit này đánh dấu block có vị trí tương ứng chưa bị chiếm)
-
     // Duyệt qua từng block bitmap (có thể có nhiều hơn 1 block bitmap)
-    for (int bitmask_block_id = 0; bitmask_block_id < bitmapBlocks; ++bitmask_block_id) {
+    for (int bitmapBlockId = 0; bitmapBlockId < bitmapBlocks; ++bitmapBlockId) {
         char data[BLOCK_SIZE];
-        readFromBlock(bitmask_block_id, data);
+        readFromBlock(bitmapBlockId, data);
         // Duyệt qua từng byte trong block bitmap thứ bitmask_block_id
         for (int idx = 0; idx < BLOCK_SIZE; ++idx) {
             if (data[idx] != ~'\0') 
@@ -420,7 +389,7 @@ int MyFS::getUnusedBlock() {
                     if ((data[idx] & (1 << n_bit)) == 0) // Kiểm tra xem bit thứ n_bit có đang được bật lên 1 hay vẫn là 0
                     {
                         // Nếu bit chưa được bật lên 1 thì trả về vị trí của block tương ứng với bit này
-                        int result = (bitmask_block_id * BLOCK_SIZE + idx) * 8 + n_bit;
+                        int result = (bitmapBlockId * BLOCK_SIZE + idx) * 8 + n_bit;
                         if (result >= dataBlocks) {
                             return BAD_BLOCK;
                         }
@@ -435,94 +404,45 @@ int MyFS::getUnusedBlock() {
     return BAD_BLOCK;
 }
 
-int MyFS::getInodeByLinks(int inode_block_id, int max_follows) {
+int MyFS::getInodeByLinks(int inodeBlockId, int max_follows) {
     INode inode;
-    readFromBlock(inode_block_id, &inode);
+    readFromBlock(inodeBlockId, &inode);
     if (inode.type != FileType::Symlink) {
-        return inode_block_id;
+        return inodeBlockId;
     }
     else {
         if (max_follows == 0) {
             return BAD_BLOCK;
         }
-        int block_id = getInodeByLinks(inode_block_id);
-        auto target_name = catFile(block_id);
-        auto linked_inode_block_id = findInodeBlock(target_name);
-        if (linked_inode_block_id == BAD_BLOCK) {
+        int blockId = getInodeByLinks(inodeBlockId);
+        auto target = catFile(blockId);
+        auto linkInode = findInodeBlock(target);
+        if (linkInode == BAD_BLOCK) {
             return BAD_BLOCK;
         }
-        return getInodeByLinks(findInodeBlock(target_name), max_follows - 1);
+        return getInodeByLinks(findInodeBlock(target), max_follows - 1);
     }
 }
 
 int MyFS::findInodeBlock(const string& path) {
-    //const string absolute_path = path[0] != '/' ? join_path(cwd, path) : path;
-    /*if (absolute_path == ROOTDIR_NAME) {
-        return root_inode_id;
-    }*/
-    int dir_inode = rootInodeId;
+    int dirInode = rootInodeId;
     size_t start = 1;
-    return findFileInode(dir_inode, path);
-
-   /* while (true) {
-        auto sep_index = absolute_path.find('/', start);
-        if (sep_index == string::npos) {
-            auto filename = absolute_path.substr(start);
-            return findFileInode(dir_inode, filename);
-        }
-        else {
-            auto subdirname = absolute_path.substr(start, sep_index - start);
-            start = sep_index + 1;
-            if (subdirname == ".") continue;
-            dir_inode = findFileInode(dir_inode, subdirname);
-            if (dir_inode == BAD_BLOCK) {
-                return BAD_BLOCK;
-            }
-        }
-    }*/
+    return findFileInode(dirInode, path);
 }
 
 int MyFS::findFileInode(int block_id, const string& filename) {
     auto data = catFile(block_id);
-    auto dir_size = data.size();
+    auto dirSize = data.size();
 
-    for (int n_file = 0; n_file < dir_size / sizeof(Link); ++n_file) {
+    for (int n_file = 0; n_file < dirSize / sizeof(Link); ++n_file) {
         auto& lnk = *reinterpret_cast<const Link*>(data.data() + n_file * sizeof(Link));
         if (lnk.filename == filename) {
-            return lnk.inode_block_id;
+            return lnk.inodeBlockId;
         }
     }
     return BAD_BLOCK;
 }
 
-//string MyFS::join_path(string part1, string part2) {
-//    if (part1 == ROOTDIR_NAME) {
-//        return '/' + part2;
-//    }
-//    return part1 + '/' + part2;
-//}
-
-//string MyFS::get_file_directory(const string& path) {
-//    const auto sep_index = path.find_last_of('/');
-//    if (sep_index == string::npos) {
-//        return cwd;
-//    }
-//    else {
-//        auto dirname = path.substr(0, sep_index);
-//        auto abs_dirname = dirname[0] == '/' ? dirname : join_path(cwd, dirname);
-//        return abs_dirname;
-//    }
-//}
-
-//string MyFS::get_filename(const string& path) {
-//    const auto sep_index = path.find_last_of('/');
-//    if (sep_index == string::npos) {
-//        return path;
-//    }
-//    else {
-//        return path.substr(sep_index + 1);
-//    }
-//}
 
 //FILE==========================================================
 void MyFS::readFile(char* data, int size, int shift, int block_id) {
@@ -537,7 +457,6 @@ void MyFS::readFile(char* data, int size, int shift, int block_id) {
             readFromBlock(block_id, data + index, s, shift % BLOCK_SIZE);
         }
         else {
-            // zero data optimization (only nulls in file block)
             fill(data + index, data + index + s, '\0');
         }
         shift += s;
@@ -567,16 +486,15 @@ bool MyFS::resizeFile(int size, int block_id) {
     if (size == inode.size) return true;
 
     //tính số inode cũ mà file đang sử dụng 
-    int n_old_blocks = inode.size == 0 ? 0 : (inode.size - 1) / BLOCK_SIZE + 1;
+    int oldBlocks = inode.size == 0 ? 0 : (inode.size - 1) / BLOCK_SIZE + 1;
 
     //tính số inode mới mà file sẽ sử dụng
-    int n_blocks = size == 0 ? 0 : (size - 1) / BLOCK_SIZE + 1;
+    int blocks = size == 0 ? 0 : (size - 1) / BLOCK_SIZE + 1;
 
     //nếu số inode mới cần sử dụng bé hơn số inode cũ đang sử dụng thì trả về trạng thái chưa sử dụng cho inode k còn dùng tới
-    if (n_blocks < n_old_blocks) {
-        for (int block_index = n_blocks; block_index < n_old_blocks; ++block_index) {
+    if (blocks < oldBlocks) {
+        for (int block_index = blocks; block_index < oldBlocks; ++block_index) {
             if (inode.data_block_ids[block_index] >= 0) {
-                //block_mark_unused(inode.data_block_ids[block_index]);
                 //trả lại trạng thái chưa sử dụng cho inode ko còn dùng tới 
                 volume.seekg((inode.data_block_ids[block_index] - bitmapBlocks) / 8, volume.beg);
                 auto  old_mask = volume.get();
@@ -588,18 +506,18 @@ bool MyFS::resizeFile(int size, int block_id) {
     }
     //nếu số inode mới cần dùng lớn hơn hoặc bằng số inode cũ thì cập nhật dữ liệu của dữ liệu mới vào ngay sau các dữ liệu của block cũ
     else {
-        if (inode.size % BLOCK_SIZE != 0 && inode.data_block_ids[n_old_blocks - 1] != ZERO_BLOCK) {
-            char tail_data[BLOCK_SIZE];
+        if (inode.size % BLOCK_SIZE != 0 && inode.data_block_ids[oldBlocks - 1] != ZERO_BLOCK) {
+            char dataLastParts[BLOCK_SIZE];
             //đọc dữ liệu của block cũ vào 1 buffer
-            readFromBlock(inode.data_block_ids[n_old_blocks - 1], tail_data);
+            readFromBlock(inode.data_block_ids[oldBlocks - 1], dataLastParts);
 
             //ghép dữ liệu mới vào dữ liệu cũ
-            fill(tail_data + inode.size % BLOCK_SIZE, tail_data + BLOCK_SIZE, '\0');
+            fill(dataLastParts + inode.size % BLOCK_SIZE, dataLastParts + BLOCK_SIZE, '\0');
 
             //chép dữ liệu được ghép vào block
-            writeToBlock(inode.data_block_ids[n_old_blocks - 1], tail_data);
+            writeToBlock(inode.data_block_ids[oldBlocks - 1], dataLastParts);
         }
-        fill(inode.data_block_ids + n_old_blocks, inode.data_block_ids + n_blocks, ZERO_BLOCK);
+        fill(inode.data_block_ids + oldBlocks, inode.data_block_ids + blocks, ZERO_BLOCK);
     }
 
     inode.size = size;
@@ -611,35 +529,33 @@ bool MyFS::writeFile(const char* data, int size, int shift, int block_id) {
     INode inode;
     readFromBlock(block_id, &inode);
     int index = 0;
-    bool inode_updated = false;
+    bool isInodeUpdated = false;
     while (size > 0) {
-        int next_block_index = shift / BLOCK_SIZE;
-        int& next_block_id = inode.data_block_ids[next_block_index];
-        if (next_block_id == ZERO_BLOCK) {
-            next_block_id = getUnusedBlock();
-            if (next_block_id == BAD_BLOCK) {
+        int nextBlock = shift / BLOCK_SIZE;
+        int& nextBlockId = inode.data_block_ids[nextBlock];
+        if (nextBlockId == ZERO_BLOCK) {
+            nextBlockId = getUnusedBlock();
+            if (nextBlockId == BAD_BLOCK) {
                 inode.size = shift;
                 writeToBlock(block_id, &inode);
                 return false;
             }
-            //block_mark_used(next_block_id);
-
-            volume.seekg((next_block_id - bitmapBlocks) / 8, volume.beg);
+            volume.seekg((nextBlockId - bitmapBlocks) / 8, volume.beg);
             char old_mask = volume.get();
-            volume.seekp((next_block_id - bitmapBlocks) / 8, volume.beg);
-            volume.put(static_cast<char>(old_mask | (1 << ((next_block_id - bitmapBlocks) % 8))));
+            volume.seekp((nextBlockId - bitmapBlocks) / 8, volume.beg);
+            volume.put(static_cast<char>(old_mask | (1 << ((nextBlockId - bitmapBlocks) % 8))));
             volume.flush();
 
-            inode_updated = true;
+            isInodeUpdated = true;
         }
-        int s = min(size, ((next_block_index + 1) * BLOCK_SIZE) - shift);
-        writeToBlock(next_block_id, data + index, s, shift % BLOCK_SIZE);
+        int s = min(size, ((nextBlock + 1) * BLOCK_SIZE) - shift);
+        writeToBlock(nextBlockId, data + index, s, shift % BLOCK_SIZE);
 
         shift += s;
         size -= s;
         index += s;
     }
-    if (inode_updated) {
+    if (isInodeUpdated) {
         writeToBlock(block_id, &inode);
     }
     return true;
@@ -650,10 +566,9 @@ void MyFS::removeInode(int inode_id) {
     readFromBlock(inode_id, &inode);
 
     if (inode.n_links == 1) {
-        for (int block_index = 0; block_index * BLOCK_SIZE < inode.size; ++block_index) {
-            int block_id = inode.data_block_ids[block_index];
+        for (int blockIndex = 0; blockIndex * BLOCK_SIZE < inode.size; ++blockIndex) {
+            int block_id = inode.data_block_ids[blockIndex];
             if (block_id != ZERO_BLOCK) {
-                //block_mark_unused(block_id);
                 //trả về trạng thái chưa sử dụng cho các inode 
                 volume.seekg((block_id - bitmapBlocks) / 8, volume.beg);
                 auto  old_mask = volume.get();
@@ -662,7 +577,6 @@ void MyFS::removeInode(int inode_id) {
                 volume.flush();
             }
         }
-        //block_mark_unused(inode_id);
         //trả về trạng thái chưa sử dụng cho các inode 
         volume.seekg((inode_id - bitmapBlocks) / 8, volume.beg);
         auto  old_mask = volume.get();

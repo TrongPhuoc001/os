@@ -60,16 +60,19 @@ void run() {
             break;
         }
         if (cmd == "format") {
+            string disk = "";
+            cout << "Nhap o dia luu tru MyFS.dat (D, E, C, ..): ";
+            cin >> disk;
             int size;
             cout << "Nhap kich thuoc volume:";
             cin >> size;
-            if (myfs->formatMyFS(size)) {
+            if (myfs->formatMyFS(size, disk)) {
                 cout << "Volume format thanh cong!" << endl;
                 insideVolume = true;
             }
             else {
                 cout << "Khong the format volume!" << endl;
-                cout << "Dam bao rang kich thuoc volume lon hon 22600MB" << endl;
+                cout << "Dam bao rang kich thuoc volume lon hon 5120MB" << endl;
             }
         }
         if (cmd == "access") {
@@ -87,19 +90,6 @@ void run() {
             string pw;
             cout << "Nhap mat khau cu:";
             cin >> pw;
-            /* if (!myfs->pw_set) {
-                    cout << "confirm your password: ";
-                    string cpw;
-                    cin >> cpw;
-                    if (pw == cpw) {
-                        myfs->change_pw(pw);
-                    }
-                    else {
-                        cout << "Create password fail\n";
-                    }
-                }
-                else {
-                }*/
             if (!myfs->checkPW(pw)) {
                 cout << "Sai mat khau\n";
             }
@@ -112,10 +102,6 @@ void run() {
                 else cout << "Doi mat khau that bai\n";
             }
         }
-        //else if (cmd == "umount") {
-        //    myfs->umount();
-        //    cout << "File system unmounted!" << endl;
-        //}
         else if (cmd == "ls") {
             cout << myfs->list(myfs->cwd);
         }
@@ -165,6 +151,8 @@ void run() {
     }
     myfs->umount();
 }
+
+
 int main() {
     run();
     return EXIT_SUCCESS;
